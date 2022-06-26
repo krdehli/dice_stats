@@ -3,6 +3,8 @@ import sys
 import argparse
 import math
 import re
+from collections.abc import Collection, Mapping
+from typing import Any
 
 class DiceRoll:
     def __init__(self, faces: int, num_dice: int = 1, offset: int | float = 0):
@@ -96,18 +98,18 @@ class DiceRoll:
 
 
     @property
-    def variance(self) -> float:
-        return self.__variance
+    def var(self) -> float:
+        return self.__var
 
 
     @property
-    def standard_deviation(self) -> float:
-        return self.__standard_deviation
+    def sd(self) -> float:
+        return self.__sd
 
 
     @property
-    def coefficient_of_variance(self) -> float:
-        return self.__coefficient_of_variance
+    def cv(self) -> float:
+        return self.__cv
 
 
     def __calculate_mean(self):
@@ -115,15 +117,15 @@ class DiceRoll:
 
 
     def __calculate_variance(self):
-        self.__variance = self.__num_dice * (self.__faces**2 - 1) / 12
+        self.__var = self.__num_dice * (self.__faces**2 - 1) / 12
 
 
     def __calculate_standard_deviation(self):
-        self.__standard_deviation = math.sqrt(self.__variance)
+        self.__sd = math.sqrt(self.__var)
 
 
     def __calculate_coefficient_of_variance(self):
-        self.__coefficient_of_variance = self.__standard_deviation / self.__mean;
+        self.__cv = self.__sd / self.__mean;
 
 
     def __calculate_stats(self):
@@ -132,6 +134,45 @@ class DiceRoll:
         self.__calculate_standard_deviation()
         self.__calculate_coefficient_of_variance()
 
+
+def column_widths(data: Collection[Mapping[str, Any]]) -> dict[str, int]:
+    widths: dict[str, int] = {}
+    for elem in data:
+        for key in elem:
+            if key not in widths:
+                widths[key] = len(key)
+            widths[key] = max(widths[key], len(str(elem[key])))
+    return widths
+
+
+def format_as_table(data: Collection[Mapping[str, Any]]) -> str:
+    widths = column_widths(data)
+
+    header = ' '.join(f'{key:{width}}' for key, width in widths.items())
+    header_sep = ' '.join('-' * width for _, width in widths.items())
+    rows = [' '.join(f'{value:{width}}' for value, width in [(row[key] or '', widths[key]) for key in widths]) for row in data]
+
+    return '\n'.join([header, header_sep, *rows])
+    
+
+def format_as_list(data: Collection[Mapping[str, Any]]) -> str:
+    widths = column_widths(data)
+
+    lines = [' | '.join(f'{key}: {value:{width}}' for key, value, width in [(key, line[key] or '', widths[key]) for key in widths]) for line in data]
+    return '\n'.join(lines)
+
+
+LONG_FIELD_NAMES: dict[str, str] = {
+    'roll': 'Roll',
+    'mean': 'Mean',
+    'cv': 'Coefficient of Variance'
+}
+
+SHORT_FIELD_NAMES: dict[str, str] = {
+    'roll': 'Roll',
+    'mean': 'µ',
+    'cv': 'Cv'
+}
 
 def main():
     parser = argparse.ArgumentParser(
@@ -162,8 +203,14 @@ def main():
 
     args = parser.parse_args()
 
-    for roll in args.rolls:
-        print(f'Roll: {roll} | mean: {roll.mean} | coefficient of variance: {100 * roll.coefficient_of_variance:.2f}%')
+    names = SHORT_FIELD_NAMES if args.abbreviate else LONG_FIELD_NAMES
+    data = [{names['roll']: roll, names['mean']: roll.mean, names['cv']: f'{100 * roll.cv:.2f}%'} for roll in args.rolls]
+
+    match args.format:
+        case 'list': 
+            print(format_as_list(data))
+        case 'table': 
+            print(format_as_table(data))
 
     sys.exit()
 
